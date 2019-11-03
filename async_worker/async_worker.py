@@ -70,38 +70,34 @@ class AsyncTask(abc.ABC):
 class AsyncTaskDelay:
     _task: asyncio.Task
     _delay_end: int
-    _sleeping: bool
 
     __slots__ = [
         "_task",
         "_delay_end",
-        "_sleeping"
     ]
 
     def __init__(self):
         self._task = None
         self._delay_end = 0
-        self._sleeping = False
 
-    async def sleep(self, _time):
+    async def sleep(self, _time) -> bool:
         self._delay_end = _time + time.time()
 
         self._task = asyncio.ensure_future(
             asyncio.sleep(_time)
         )
 
-        self._sleeping = True
-
         try:
-            await self._task
-        except asyncio.CancelledError as e:
-            self._sleeping = False
-            raise e
 
-        self._sleeping = False
+            await self._task
+
+        except asyncio.CancelledError:
+            return False
+
+        return True
 
     def is_sleeping(self) -> bool:
-        return self._sleeping
+        return (not self._task.done()) if (self._task is not None) else False
 
     def cancel(self):
         self._task.cancel()
@@ -187,17 +183,15 @@ class AsyncTaskScheduler:
                 delay -= time.time()
                 task.lock()
 
-                if delay > 0:
-                    try:
-                        await sleeper.sleep(delay)
-                    except asyncio.CancelledError:
-                        task.unlock()
-                        continue
+                if delay > 0 and not await sleeper.sleep(delay):
+                    task.unlock()
+                    continue
 
                 next_delay = await task.process()
 
                 if next_delay is False:
                     self._queue.remove(task)
+
                 else:
                     task.set_next(next_delay)
                     task.unlock()
