@@ -77,7 +77,7 @@ class AsyncTaskDelay:
     ]
 
     def __init__(self):
-        self._task = None
+        self._task = asyncio.ensure_future(asyncio.Future())
         self._delay_end = 0
 
     async def sleep(self, _time) -> bool:
