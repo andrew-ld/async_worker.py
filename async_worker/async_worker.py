@@ -97,7 +97,7 @@ class AsyncTaskDelay:
         return True
 
     def is_sleeping(self) -> bool:
-        return (not self._task.done()) if (self._task is not None) else False
+        return not (self._task.done() or self._task.cancelled())
 
     def cancel(self):
         self._task.cancel()
