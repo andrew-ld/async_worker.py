@@ -31,6 +31,11 @@ class AsyncTask(abc.ABC):
     _next: int
     _locked: bool
 
+    __slots__ = [
+        "_next",
+        "_locked"
+    ]
+
     def __init__(self):
         self._next = 0
         self._locked = False
@@ -63,9 +68,20 @@ class AsyncTask(abc.ABC):
 
 
 class AsyncTaskDelay:
-    _task: asyncio.Task = None
-    _delay_end: int = 0
-    _sleeping: bool = False
+    _task: asyncio.Task
+    _delay_end: int
+    _sleeping: bool
+
+    __slots__ = [
+        "_task",
+        "_delay_end",
+        "_sleeping"
+    ]
+
+    def __init__(self):
+        self._task = None
+        self._delay_end = 0
+        self._sleeping = False
 
     async def sleep(self, _time):
         self._delay_end = _time + time.time()
@@ -97,6 +113,10 @@ class AsyncTaskDelay:
 class AsyncMultipleEvent:
     _events: typing.List[asyncio.Event]
 
+    __slots__ = [
+        "_events"
+    ]
+
     def __init__(self):
         self._events = []
 
@@ -115,6 +135,13 @@ class AsyncTaskScheduler:
     _wait_enqueue: AsyncMultipleEvent
     _wait_unlock: AsyncMultipleEvent
     _sleep_tasks: typing.List[AsyncTaskDelay]
+
+    __slots__ = [
+        "_queue",
+        "_sleep_tasks",
+        "_wait_enqueue",
+        "_wait_unlock"
+    ]
 
     def __init__(self):
         self._queue = []
