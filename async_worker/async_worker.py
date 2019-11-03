@@ -43,9 +43,6 @@ class AsyncTask(abc.ABC):
     def setup(self, *args, **kwargs):
         raise NotImplementedError
 
-    def __gt__(self, other: 'AsyncTask') -> bool:
-        return self._next > other._next
-
     def set_next(self, _next: int):
         self._next = time.time() + _next
 
@@ -153,13 +150,14 @@ class AsyncTaskScheduler:
 
                 task, delay = min(
                     (
-                        (task, task.get_delay())
+                        (task, task.get_next())
                         for task in runnable_tasks
                     ),
 
                     key=operator.itemgetter(1)
                 )
 
+                delay -= time.time()
                 task.lock()
 
                 if delay > 0:
