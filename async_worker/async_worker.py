@@ -79,7 +79,7 @@ class AsyncTask(abc.ABC):
         return self._locked
 
 
-class OneLoopTask(AsyncTask, abc.ABC):
+class OneLoopAsyncTask(AsyncTask, abc.ABC):
     async def _process(self) -> bool:
         await self.process()
         return False
@@ -201,8 +201,6 @@ class AsyncTaskScheduler:
                         task.lock()
                         task.set_scheduler(self)
 
-                        future = asyncio.ensure_future(task.process())
-
                         def on_complete(the_task: AsyncTask, fu: asyncio.Future):
                             result = fu.result()
 
@@ -215,6 +213,7 @@ class AsyncTaskScheduler:
                                 the_task.set_next(result)
                                 self._wait_unlock.unlock_first()
 
+                        future = asyncio.ensure_future(task.process())
                         future.add_done_callback(functools.partial(on_complete, task))
                         futures.append(future)
 

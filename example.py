@@ -26,7 +26,7 @@
 import asyncio
 from multiprocessing import cpu_count
 
-from async_worker import AsyncTaskScheduler, AsyncTask, OneLoopTask
+from async_worker import AsyncTaskScheduler, AsyncTask, OneLoopAsyncTask
 
 
 class Test1(AsyncTask):
@@ -61,7 +61,7 @@ class Test2(AsyncTask):
         return False
 
 
-class Test3(OneLoopTask):
+class Test3(OneLoopAsyncTask):
     _i: int
 
     async def process(self):
