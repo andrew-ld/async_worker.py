@@ -29,7 +29,7 @@ Hi!, this software permit to schedule loop oriented asynchronous tasks
             task.setup(i)
             await scheduler.submit(task)
     
-        await asyncio.gather(*([scheduler.loop()] * cpu_count()))
+        await asyncio.gather(*(scheduler.loop() for _ in range(cpu_count())))
     
     
     if __name__ == "__main__":

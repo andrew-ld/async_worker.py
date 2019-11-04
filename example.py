@@ -24,9 +24,9 @@
 # For more information, please refer to <http://unlicense.org/>
 
 import asyncio
-
 from multiprocessing import cpu_count
-from async_worker import AsyncTaskScheduler, AsyncTask
+
+from async_worker import AsyncTaskScheduler, AsyncTask, OneLoopTask
 
 
 class Test1(AsyncTask):
@@ -52,26 +52,40 @@ class Test2(AsyncTask):
             self._bootstrapped = True
             return self._after
 
-        print(id(self), self.__class__.__name__, self._after)
+        for i in range(50):
+            task = Test3()
+            task.setup(i)
+
+            await self.future(task)
+
         return False
+
+
+class Test3(OneLoopTask):
+    _i: int
+
+    async def process(self):
+        await asyncio.sleep(self._i)
+        print("sleep", self._i)
+
+    def setup(self, i: int):
+        self._i = i
 
 
 async def main():
     scheduler = AsyncTaskScheduler()
 
-    for i in range(10, 15):
+    for i in range(6, 12):
         task = Test1()
         task.setup(i)
 
         await scheduler.submit(task)
 
-    for i in range(6, 10):
-        task = Test2()
-        task.setup(i)
+    task = Test2()
+    task.setup(6)
+    await scheduler.submit(task)
 
-        await scheduler.submit(task)
-
-    await asyncio.gather(*([scheduler.loop()] * cpu_count()))
+    await asyncio.gather(*(scheduler.loop() for _ in range(cpu_count())))
 
 if __name__ == "__main__":
     _loop = asyncio.get_event_loop()

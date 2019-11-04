@@ -22,6 +22,7 @@
 
 import asyncio
 import abc
+import functools
 import typing
 import time
 import operator
@@ -30,18 +31,29 @@ import operator
 class AsyncTask(abc.ABC):
     _next: int
     _locked: bool
+    _scheduler: 'AsyncTaskScheduler'
 
     __slots__ = [
         "_next",
-        "_locked"
+        "_locked",
+        "_scheduler"
     ]
 
     def __init__(self):
         self._next = 0
         self._locked = False
 
+    def set_scheduler(self, scheduler: 'AsyncTaskScheduler'):
+        self._scheduler = scheduler
+
+    async def future(self, task: 'AsyncTask'):
+        await self._scheduler.submit(task)
+
+    async def _process(self) -> typing.Union[bool, int]:
+        return await self.process()
+
     @abc.abstractmethod
-    async def process(self) -> int:
+    async def process(self) -> typing.Union[bool, int]:
         raise NotImplementedError
 
     @abc.abstractmethod
@@ -67,6 +79,16 @@ class AsyncTask(abc.ABC):
         return self._locked
 
 
+class OneLoopTask(AsyncTask, abc.ABC):
+    async def _process(self) -> bool:
+        await self.process()
+        return False
+
+    @abc.abstractmethod
+    async def process(self) -> typing.NoReturn:
+        raise NotImplementedError
+
+
 class AsyncTaskDelay:
     _task: asyncio.Task
     _delay_end: int
@@ -77,18 +99,14 @@ class AsyncTaskDelay:
     ]
 
     def __init__(self):
-        self._task = asyncio.ensure_future(asyncio.Future())
+        self._task = asyncio.Future()
         self._delay_end = 0
 
     async def sleep(self, _time) -> bool:
         self._delay_end = _time + time.time()
-
-        self._task = asyncio.ensure_future(
-            asyncio.sleep(_time)
-        )
+        self._task = asyncio.ensure_future(asyncio.sleep(_time))
 
         try:
-
             await self._task
 
         except asyncio.CancelledError:
@@ -157,6 +175,8 @@ class AsyncTaskScheduler:
             max(cancellable_tasks).cancel()
 
     async def loop(self):
+        task: AsyncTask
+
         sleeper = AsyncTaskDelay()
         self._sleep_tasks.append(sleeper)
 
@@ -171,6 +191,36 @@ class AsyncTaskScheduler:
                     await self._wait_unlock.lock()
                     continue
 
+                thread_local_time = time.time()
+                fast_submit_tasks = [*filter(lambda x: x.get_next() <= thread_local_time, runnable_tasks)]
+
+                if fast_submit_tasks:
+                    futures = []
+
+                    for task in fast_submit_tasks:
+                        task.lock()
+                        task.set_scheduler(self)
+
+                        future = asyncio.ensure_future(task.process())
+
+                        def on_complete(the_task: AsyncTask, fu: asyncio.Future):
+                            result = fu.result()
+
+                            if result is None:
+                                self._queue.remove(the_task)
+                                pass
+
+                            else:
+                                the_task.unlock()
+                                the_task.set_next(result)
+                                self._wait_unlock.unlock_first()
+
+                        future.add_done_callback(functools.partial(on_complete, task))
+                        futures.append(future)
+
+                    await asyncio.gather(*futures)
+                    continue
+
                 task, delay = min(
                     (
                         (task, task.get_next())
@@ -180,14 +230,15 @@ class AsyncTaskScheduler:
                     key=operator.itemgetter(1)
                 )
 
-                delay -= time.time()
+                delay -= thread_local_time
                 task.lock()
 
                 if delay > 0 and not await sleeper.sleep(delay):
                     task.unlock()
                     continue
 
-                next_delay = await task.process()
+                task.set_scheduler(self)
+                next_delay = await task._process()
 
                 if next_delay is False:
                     self._queue.remove(task)
