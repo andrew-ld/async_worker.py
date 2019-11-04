@@ -183,12 +183,14 @@ class AsyncTaskScheduler:
         while True:
             if not self._queue:
                 await self._wait_enqueue.lock()
+                await asyncio.sleep(0)
 
             while self._queue:
                 runnable_tasks = [*filter(lambda x: not x.is_locked(), self._queue)]
 
                 if not runnable_tasks:
                     await self._wait_unlock.lock()
+                    await asyncio.sleep(0)
                     continue
 
                 thread_local_time = time.time()
