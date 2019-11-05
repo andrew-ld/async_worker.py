@@ -20,11 +20,12 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from .async_worker import AsyncTaskScheduler, AsyncTask, OneLoopAsyncTask
+from .async_worker import AsyncTaskScheduler, AsyncTask, OneLoopAsyncTask, SchedulerConfig
 
 
 __all__ = [
     "AsyncTaskScheduler",
     "AsyncTask",
-    "OneLoopAsyncTask"
+    "OneLoopAsyncTask",
+    "SchedulerConfig"
 ]
