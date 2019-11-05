@@ -152,22 +152,46 @@ class AsyncMultipleEvent:
             self._events.pop(0).set()
 
 
+class SchedulerConfig:
+    imprecise_delay: int
+    skippable_delay: int
+    max_fast_submit_tasks: int
+
+    __slots__ = [
+        "imprecise_delay",
+        "skippable_delay",
+        "max_fast_submit_tasks"
+    ]
+
+    def __init__(self,
+        imprecise_delay: int = 2 * 1e+8,
+        skippable_delay: int = 3 * 1e+8,
+        max_fast_submit_tasks: int = 50
+    ):
+        self.imprecise_delay = imprecise_delay
+        self.skippable_delay = skippable_delay
+        self.max_fast_submit_tasks = max_fast_submit_tasks
+
+
 class AsyncTaskScheduler:
     _queue: typing.List[AsyncTask]
     _wait_enqueue: AsyncMultipleEvent
     _wait_unlock: AsyncMultipleEvent
     _sleep_tasks: typing.List[AsyncTaskDelay]
+    _config: SchedulerConfig
 
     __slots__ = [
         "_queue",
         "_sleep_tasks",
         "_wait_enqueue",
-        "_wait_unlock"
+        "_wait_unlock",
+        "_config"
     ]
 
-    def __init__(self):
+    def __init__(self, config: SchedulerConfig = SchedulerConfig()):
         self._queue = []
         self._sleep_tasks = []
+        self._config = config
 
         self._wait_enqueue = AsyncMultipleEvent()
         self._wait_unlock = AsyncMultipleEvent()
@@ -201,31 +225,35 @@ class AsyncTaskScheduler:
                     await asyncio.sleep(0)
                     continue
 
-                fast_submit_tasks = [*filter(lambda x: x.get_delay() <= 0, runnable_tasks)]
+                fast_submit_tasks = [*filter(lambda x: x.get_delay() <= self._config.imprecise_delay, runnable_tasks)]
 
                 if fast_submit_tasks:
-                    futures = []
-
                     for task in fast_submit_tasks:
                         task.lock()
                         task.set_scheduler(self)
 
-                        def on_complete(the_task: AsyncTask, fu: asyncio.Future):
-                            result = fu.result()
+                    while fast_submit_tasks:
+                        futures = []
 
-                            if result is False:
-                                self._queue.remove(the_task)
+                        for task in fast_submit_tasks[:self._config.max_fast_submit_tasks]:
+                            def on_complete(the_task: AsyncTask, fu: asyncio.Future):
+                                result = fu.result()
 
-                            else:
-                                the_task.unlock()
-                                the_task.set_next(result)
-                                self._wait_unlock.unlock_first()
+                                if result is False:
+                                    self._queue.remove(the_task)
 
-                        future = asyncio.ensure_future(task._process())
-                        future.add_done_callback(functools.partial(on_complete, task))
-                        futures.append(future)
+                                else:
+                                    the_task.unlock()
+                                    the_task.set_next(result)
+                                    self._wait_unlock.unlock_first()
 
-                    await asyncio.gather(*futures)
+                            future = asyncio.ensure_future(task._process())
+                            future.add_done_callback(functools.partial(on_complete, task))
+                            futures.append(future)
+
+                        await asyncio.gather(*futures)
+                        fast_submit_tasks = fast_submit_tasks[self._config.max_fast_submit_tasks:]
+
                     continue
 
                 task, delay = min(
@@ -240,7 +268,7 @@ class AsyncTaskScheduler:
                 delay -= time.time_ns()
                 task.lock()
 
-                if delay > 0 and not await sleeper.sleep(delay):
+                if delay > self._config.skippable_delay and not await sleeper.sleep(delay):
                     task.unlock()
                     continue
 
