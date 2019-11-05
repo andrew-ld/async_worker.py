@@ -1,5 +1,6 @@
 # async_worker.py
-Hi!, this software permit to schedule loop oriented asynchronous tasks
+Hi!, this software permit to schedule loop oriented asynchronous tasks  
+with imprecise (and non realtime) scheduling necessity
 
 # example
     import asyncio
