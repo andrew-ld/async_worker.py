@@ -173,6 +173,23 @@ class SchedulerConfig:
         self.max_fast_submit_tasks = max_fast_submit_tasks
 
 
+def on_complete(
+    the_task: AsyncTask,
+    the_queue: list,
+    the_lock: AsyncMultipleEvent,
+    the_future: asyncio.Future,
+):
+    result = the_future.result()
+
+    if result is False:
+        the_queue.remove(the_task)
+
+    else:
+        the_task.unlock()
+        the_task.set_next(result)
+        the_lock.unlock_first()
+
+
 class AsyncTaskScheduler:
     _queue: typing.List[AsyncTask]
     _wait_enqueue: AsyncMultipleEvent
@@ -236,19 +253,11 @@ class AsyncTaskScheduler:
                         futures = []
 
                         for task in fast_submit_tasks[:self._config.max_fast_submit_tasks]:
-                            def on_complete(the_task: AsyncTask, fu: asyncio.Future):
-                                result = fu.result()
-
-                                if result is False:
-                                    self._queue.remove(the_task)
-
-                                else:
-                                    the_task.unlock()
-                                    the_task.set_next(result)
-                                    self._wait_unlock.unlock_first()
+                            on_done = functools.partial(on_complete, task, self._queue, self._wait_unlock)
 
                             future = asyncio.ensure_future(task._process())
-                            future.add_done_callback(functools.partial(on_complete, task))
+                            future.add_done_callback(on_done)
+
                             futures.append(future)
 
                         await asyncio.gather(*futures)
