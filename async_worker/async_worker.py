@@ -50,7 +50,15 @@ class AsyncTask(abc.ABC):
         await self._scheduler.submit(task)
 
     async def _process(self) -> typing.Union[bool, int]:
-        return await self.process()
+        result = await self.process()
+
+        if result is False:
+            return False
+
+        if isinstance(result, int):
+            return result * 1e9
+
+        raise ValueError
 
     @abc.abstractmethod
     async def process(self) -> typing.Union[bool, int]:
@@ -61,13 +69,13 @@ class AsyncTask(abc.ABC):
         raise NotImplementedError
 
     def set_next(self, _next: int):
-        self._next = time.time() + _next
+        self._next = time.time_ns() + _next
 
     def get_next(self) -> int:
         return self._next
 
     def get_delay(self) -> int:
-        return self.get_next() - time.time()
+        return self.get_next() - time.time_ns()
 
     def lock(self):
         self._locked = True
@@ -103,8 +111,8 @@ class AsyncTaskDelay:
         self._delay_end = 0
 
     async def sleep(self, _time) -> bool:
-        self._delay_end = _time + time.time()
-        self._task = asyncio.ensure_future(asyncio.sleep(_time))
+        self._delay_end = _time + time.time_ns()
+        self._task = asyncio.ensure_future(asyncio.sleep(_time // 1e9))
 
         try:
             await self._task
@@ -193,8 +201,7 @@ class AsyncTaskScheduler:
                     await asyncio.sleep(0)
                     continue
 
-                thread_local_time = time.time()
-                fast_submit_tasks = [*filter(lambda x: x.get_next() <= thread_local_time, runnable_tasks)]
+                fast_submit_tasks = [*filter(lambda x: x.get_delay() <= 0, runnable_tasks)]
 
                 if fast_submit_tasks:
                     futures = []
@@ -206,16 +213,15 @@ class AsyncTaskScheduler:
                         def on_complete(the_task: AsyncTask, fu: asyncio.Future):
                             result = fu.result()
 
-                            if result is None:
+                            if result is False:
                                 self._queue.remove(the_task)
-                                pass
 
                             else:
                                 the_task.unlock()
                                 the_task.set_next(result)
                                 self._wait_unlock.unlock_first()
 
-                        future = asyncio.ensure_future(task.process())
+                        future = asyncio.ensure_future(task._process())
                         future.add_done_callback(functools.partial(on_complete, task))
                         futures.append(future)
 
@@ -231,7 +237,7 @@ class AsyncTaskScheduler:
                     key=operator.itemgetter(1)
                 )
 
-                delay -= thread_local_time
+                delay -= time.time_ns()
                 task.lock()
 
                 if delay > 0 and not await sleeper.sleep(delay):
