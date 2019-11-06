@@ -12,7 +12,8 @@ with imprecise (and non realtime) scheduling necessity
     class ExampleTask(AsyncTask):
         _pause: int
     
-        def setup(self, pause: int):
+        def __init__(self, pause: int):
+            super().__init__()
             self._pause = pause
     
         async def process(self) -> int:
@@ -26,8 +27,7 @@ with imprecise (and non realtime) scheduling necessity
         scheduler = AsyncTaskScheduler()
     
         for i in range(1, 5):
-            task = ExampleTask()
-            task.setup(i)
+            task = ExampleTask(i)
             await scheduler.submit(task)
     
         await asyncio.gather(*(scheduler.loop() for _ in range(cpu_count())))

@@ -32,7 +32,8 @@ from async_worker import AsyncTaskScheduler, AsyncTask, OneLoopAsyncTask
 class Test1(AsyncTask):
     _pause: int
 
-    def setup(self, pause: int):
+    def __init__(self, pause: int):
+        super().__init__()
         self._pause = pause
 
     async def process(self) -> int:
@@ -44,7 +45,8 @@ class Test2(AsyncTask):
     _after: int
     _bootstrapped = False
 
-    def setup(self, after: int):
+    def __init__(self, after: int):
+        super().__init__()
         self._after = after
 
     async def process(self) -> int:
@@ -53,9 +55,7 @@ class Test2(AsyncTask):
             return self._after
 
         for i in range(50):
-            task = Test3()
-            task.setup(i)
-
+            task = Test3(i)
             await self.future(task)
 
         return False
@@ -68,7 +68,8 @@ class Test3(OneLoopAsyncTask):
         await asyncio.sleep(self._i)
         print("sleep", self._i)
 
-    def setup(self, i: int):
+    def __init__(self, i: int):
+        super().__init__()
         self._i = i
 
 
@@ -76,14 +77,9 @@ async def main():
     scheduler = AsyncTaskScheduler()
 
     for i in range(6, 12):
-        task = Test1()
-        task.setup(i)
+        await scheduler.submit(Test1(i))
 
-        await scheduler.submit(task)
-
-    task = Test2()
-    task.setup(6)
-    await scheduler.submit(task)
+    await scheduler.submit(Test2(6))
 
     await asyncio.gather(*(scheduler.loop() for _ in range(cpu_count())))
 

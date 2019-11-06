@@ -64,9 +64,16 @@ class AsyncTask(abc.ABC):
     async def process(self) -> typing.Union[bool, int]:
         raise NotImplementedError
 
-    @abc.abstractmethod
-    def setup(self, *args, **kwargs):
-        raise NotImplementedError
+    async def _setup(self) -> bool:
+        result = await self.setup()
+
+        if result is None:
+            return True
+
+        return result
+
+    async def setup(self) -> bool:
+        pass
 
     def set_next(self, _next: int):
         self._next = time.time_ns() + _next
@@ -164,8 +171,8 @@ class SchedulerConfig:
     ]
 
     def __init__(self,
-        imprecise_delay: int = 2 * 1e+8,
-        skippable_delay: int = 3 * 1e+8,
+        imprecise_delay: int = 2 * 1e8,
+        skippable_delay: int = 3 * 1e8,
         max_fast_submit_tasks: int = 50
     ):
         self.imprecise_delay = imprecise_delay
@@ -214,14 +221,15 @@ class AsyncTaskScheduler:
         self._wait_unlock = AsyncMultipleEvent()
 
     async def submit(self, task: AsyncTask):
-        self._queue.append(task)
-        self._wait_enqueue.unlock_first()
-        self._wait_unlock.unlock_first()
+        if await task._setup():
+            self._queue.append(task)
+            self._wait_enqueue.unlock_first()
+            self._wait_unlock.unlock_first()
 
-        cancellable_tasks = [*filter(lambda x: x.is_sleeping(), self._sleep_tasks)]
+            cancellable_tasks = [*filter(lambda x: x.is_sleeping(), self._sleep_tasks)]
 
-        if cancellable_tasks:
-            max(cancellable_tasks).cancel()
+            if cancellable_tasks:
+                max(cancellable_tasks).cancel()
 
     async def loop(self):
         task: AsyncTask
