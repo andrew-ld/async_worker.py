@@ -71,9 +71,12 @@ class AsyncTask(abc.ABC):
         self._ready = True
 
         if result is None:
-            return True
+            return 0
 
-        return result
+        if not result:
+            return False
+
+        return 0
 
     async def setup(self) -> bool:
         pass
