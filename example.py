@@ -68,6 +68,9 @@ class Test3(OneLoopAsyncTask):
         await asyncio.sleep(self._i)
         print("sleep", self._i)
 
+    async def setup(self):
+        print("setup triggered")
+
     def __init__(self, i: int):
         super().__init__()
         self._i = i
